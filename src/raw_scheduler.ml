@@ -34,8 +34,7 @@ module Which_watcher = struct
     module type S =
       File_descr_watcher_intf.S
       with type 'a additional_create_args =
-             handle_fd_read_bad:(File_descr.t -> unit)
-             -> handle_fd_write_bad:(File_descr.t -> unit)
+             timerfd:Linux_ext.Timerfd.t
              -> 'a
 
     type t = (module S)
@@ -515,13 +514,21 @@ let create
   let file_descr_watcher, timerfd =
     match file_descr_watcher with
     | Custom (module Custom) ->
+      let timerfd =
+        match try_create_timerfd () with
+        | None ->
+          raise_s
+            [%message
+              {|Async refuses to run using epoll on a system that doesn't support timer FDs, since
+Async will be unable to timeout with sub-millisecond precision.|}]
+        | Some timerfd -> timerfd
+      in
       let watcher =
         Custom.create
           ~num_file_descrs
+          ~timerfd
           ~handle_fd_read_ready
-          ~handle_fd_read_bad
           ~handle_fd_write_ready
-          ~handle_fd_write_bad
       in
       let module W = struct
         include Custom
@@ -529,7 +536,7 @@ let create
         let watcher = watcher
       end
       in
-      (module W : File_descr_watcher.S), None
+      (module W : File_descr_watcher.S), Some timerfd
     | Config Select ->
       let watcher =
         Select_file_descr_watcher.create
@@ -910,6 +917,11 @@ let be_the_scheduler ?(raise_unhandled_exn = false) t =
   in
   let error_kind, error =
     try `User_uncaught, loop () with
+    | Eio.Cancel.Cancelled _ as ex ->
+      Thread_pool.finished_with t.thread_pool;
+      Thread_pool.block_until_finished t.thread_pool;
+      reset_in_forked_process ();
+      raise ex
     | exn ->
       `Async_uncaught, Error.create "bug in async scheduler" (exn, t) [%sexp_of: exn * t]
   in

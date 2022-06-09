@@ -21,8 +21,7 @@ module Which_watcher : sig
     module type S =
       File_descr_watcher_intf.S
       with type 'a additional_create_args =
-             handle_fd_read_bad:(File_descr.t -> unit)
-             -> handle_fd_write_bad:(File_descr.t -> unit)
+             timerfd:Linux_ext.Timerfd.t
              -> 'a
 
     type t = (module S)
@@ -138,3 +137,9 @@ val time_spent_waiting_for_io : unit -> Time_ns.Span.t
     scheduler and other threads.  A plausible setting is 10us.  This can also be set via
     the [ASYNC_CONFIG] environment variable. *)
 val set_min_inter_cycle_timeout : Time_ns.Span.t -> unit
+
+val lock : t -> unit
+(** [lock t] takes the async lock. *)
+
+val unlock : t -> unit
+(** [unlock t] releases the async lock. *)
