@@ -917,7 +917,7 @@ let be_the_scheduler ?(raise_unhandled_exn = false) t =
   in
   let error_kind, error =
     try `User_uncaught, loop () with
-    | Eio.Cancel.Cancelled _ as ex ->
+    | Exit as ex ->
       Thread_pool.finished_with t.thread_pool;
       Thread_pool.block_until_finished t.thread_pool;
       reset_in_forked_process ();
